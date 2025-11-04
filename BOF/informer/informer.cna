@@ -1,0 +1,110 @@
+sub readbof {
+	local('$barch $handle $data');
+	$barch  = barch($1);
+
+	# read in the right BOF file
+    println(script_resource("$2 $+ / $+ $2 $+ . $+ $barch $+ .o"));
+	$handle = openf(script_resource("$2 $+ / $+ $2 $+ . $+ $barch $+ .o"));
+	$data   = readb($handle, -1);
+	closef($handle);
+	if(strlen($data) == 0)
+	{
+		berror($1, "could not read bof file");
+	}
+	
+	return $data;
+}
+
+alias http-relay-informer {
+    local('$args $barch $url');
+	
+	if(size(@_) < 2)
+	{
+		berror($1, beacon_command_detail("http-relay-informer"));
+		return;
+	}
+	$barch  = barch($1);
+	$url = $2;
+    
+	btask($1, "Tasked beacon to inform on HTTP/S protections");
+	
+	$args = bof_pack($1, "Z", $url);
+	beacon_inline_execute($1, readbof($1, "http-relay-informer"), "go", $args);
+}
+
+beacon_command_register(
+	"http-relay-informer", 
+	"Inform on HTTP/S service binding enforcement and HTTPS channel binding enforcement", 
+	"http-relay-informer [url]\n\n Include 'https://' or 'http://' in the URL"
+);
+
+alias ldap-relay-informer {
+    local('$args $barch $host');
+	
+	if(size(@_) < 2)
+	{
+		berror($1, beacon_command_detail("ldap-relay-informer"));
+		return;
+	}
+	$barch  = barch($1);
+	$host = $2;
+    
+	btask($1, "Tasked beacon to inform on LDAP/S protections");
+	
+	$args = bof_pack($1, "z", $host);
+	beacon_inline_execute($1, readbof($1, "ldap-relay-informer"), "go", $args);
+}
+
+beacon_command_register(
+	"ldap-relay-informer", 
+	"Inform on LDAP signing enforcement and LDAPS channel binding enforcement", 
+	"ldap-relay-informer [host|all]\n\nUse 'all' to query DNS for DCs and check all DCs in the domain"
+);
+
+alias mssql-relay-informer {
+    local('$args $barch $host $port $database');
+	
+	if(size(@_) < 2)
+	{
+		berror($1, beacon_command_detail("mssql-relay-informer"));
+		return;
+	}
+	$barch  = barch($1);
+	$host = $2;
+	$port = iff(-istrue $3, $3, 1433);
+	$database = iff(-istrue $4, $4, "master");
+    
+	btask($1, "Tasked beacon to inform on MSSQL protections");
+	
+	$args = bof_pack($1, "ziz", $host, $port, $database);
+	beacon_inline_execute($1, readbof($1, "mssql-relay-informer"), "go", $args);
+}
+
+beacon_command_register(
+	"mssql-relay-informer", 
+	"Inform on MSSQL service binding enforcement and channel binding enforcement", 
+	"mssql-relay-informer [host] [opt: port] [opt: database]\n\nPort defaults to 1433, database defaults to 'master'"
+);
+
+alias smb-relay-informer {
+    local('$args $barch $host');
+	
+	if(size(@_) < 2)
+	{
+		berror($1, beacon_command_detail("smb-relay-informer"));
+		return;
+	}
+	$barch  = barch($1);
+	$host = $2;
+    
+	btask($1, "Tasked beacon to inform on SMB protections");
+	
+	$args = bof_pack($1, "z", $host);
+	beacon_inline_execute($1, readbof($1, "smb-relay-informer"), "go", $args);
+}
+
+beacon_command_register(
+	"smb-relay-informer", 
+	"Inform on SMB signing enforcement", 
+	"smb-relay-informer [host]"
+);
