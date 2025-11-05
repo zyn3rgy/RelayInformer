@@ -26,6 +26,6 @@ See the [RelayInformer [Python]](PLACEHOLDER) and [RelayInformer [BOFs]](PLACEHO
 - **Alex Demine** - initial effort in MSSQL EPA research
 - [@Defte_](https://x.com/Defte_) - [“A journey implementation Channel Binding on MSSQLClient.py”](https://sensepost.com/blog/2025/a-journey-implementing-channel-binding-on-mssqlclient.py/)
 - [@lowercase_drm](https://x.com/lowercase_drm) - early open-source implementation of LDAP channel binding in LDAP3 library
-- **Pierre Milioni** & **Geoggrey Bertoli** - ["A study on Windows HTTP Authentication (Part II)](https://www.synacktiv.com/publications/a-study-on-windows-http-authentication-part-ii)
+- **Pierre Milioni** & **Geoffrey Bertoli** - ["A study on Windows HTTP Authentication (Part II)](https://www.synacktiv.com/publications/a-study-on-windows-http-authentication-part-ii)
 - [Adam Crosser](https://x.com/UNC1739) - ["Relaying to ADFS Attacks"](https://www.praetorian.com/blog/relaying-to-adfs-attacks/)
 - Open-source developers contributing to libraries such as [Impacket](https://github.com/fortra/impacket), [msldap](https://github.com/skelsec/msldap), [LdapSignCheck](https://github.com/cube0x0/LdapSignCheck), and many more
