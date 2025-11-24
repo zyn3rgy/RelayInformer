@@ -16,7 +16,27 @@ uv run relayinformer -h
 
 ## Usage Examples
 
-### HTTP/HTTPS
+#### LDAP/LDAPS
+Determine the exact level of EPA enforcement and server signing enforced on Domain Controllers. This module has options for LDAPS (checks EPA enforcement), LDAP (checks server signing requirements), or both.
+
+> [!NOTE]
+> LDAPS (EPA) can be determined **unauthenticated** and does not require credential material. LDAP (server signing) does require a **valid domain user credential**, either password or ntlm hash.
+
+```bash
+# Check LDAPS only (channel binding) - unauthenticated
+uv run relayinformer ldap --method LDAPS --dc-ip 192.168.1.10
+
+# Lookup SRV records to check all DCs
+uv run relayinformer ldap --method BOTH --dns -u username -p mypass -d domain.local
+```
+
+#### HTTP/HTTPS
+
+Determine exact level of EPA enforcement for standard HTTP and HTTPS services.
+
+> [!NOTE]
+> Requires a password or ntlm hash for a user that can authenticate (recieve a 200 response code) to the target service. 
+
 ```bash
 # Test HTTPS server with password
 uv run relayinformer http --url https://pki.domain.local/certsrv --user domain/username --password mypass
@@ -25,18 +45,13 @@ uv run relayinformer http --url https://pki.domain.local/certsrv --user domain/u
 uv run relayinformer http --url http://pki.domain.local/certsrv --user domain\\username --hashes LM:NT
 ```
 
-### LDAP/LDAPS
-Check Domain Controllers for LDAP authentication protections. LDAPS checks can be done unauthenticated, while checking both LDAP and LDAPS requires authentication.
+#### MSSQL
 
-```bash
-# Check LDAPS only (channel binding) on a single DC - unauthenticated
-uv run relayinformer ldap --method LDAPS --dc-ip 192.168.1.10
+Determine the exact level of EPA enforcement for MSSQL services, regardless of encryption requirements. 
 
-# Lookup SRV records to check all DCs
-uv run relayinformer ldap --method BOTH --dns -u username -p mypass -d domain.local
-```
+> [!NOTE]
+> Requires a valid domain user credential, and that user does not need access to the database.
 
-### MSSQL
 ```bash
 # Test with password
 uv run relayinformer mssql --target sql.domain.local --user domain/username --password mypass
