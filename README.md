@@ -14,7 +14,7 @@ Python and BOF utilites to the determine EPA enforcement levels of popular NTLM 
 
 ## Introduction
 
-These tools were written to compliment research summarized in a [blog post](PLACEHOLDER) / [presentation](PLACEHOLDER) by [@Tw1sm](https://x.com/Tw1sm) and myself. 
+These tools were written to compliment research summarized in a [blog post](https://specterops.io/blog/2025/11/25/less-praying-more-relaying-enumerating-epa-enforcement-for-mssql-and-https/) / [presentation](https://specterops.zoom.us/webinar/register/WN_kKbaJbJXRBayoePEw4eawQ#/registration) by [@Tw1sm](https://x.com/Tw1sm) and myself. 
 
 NTLM relay is still a widely abused attack vector during pentests and red teams alike. Depending on your network access perspective, setting up for a relay can be an involved and error-prone process (e.g. over C2). The goal of this toolset is to better inform your NTLM relays, especially in cases where Extended Protection for Authentication (EPA) could be enforced as a mitigation.
 
