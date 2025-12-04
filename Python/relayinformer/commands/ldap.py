@@ -88,7 +88,7 @@ def main(
                     )
                     if ldapsChannelBindingAlwaysCheck == False and ldapsChannelBindingWhenSupportedCheck == True:
                         logger.info(f"\\[{dc}] (LDAPS) channel binding is set to [yellow]when supported[/] - " \
-                                    "this may prevent an NTLM relay depending on the client's support for channel binding")
+                                    "this may prevent an NTLM relay depending on the client's support for channel binding", extra=OBJ_EXTRA_FMT)
                     elif ldapsChannelBindingAlwaysCheck == False and ldapsChannelBindingWhenSupportedCheck == False:
                             logger.info(f"\\[{dc}] (LDAPS) CHANNEL BINDING SET TO [green]NEVER[/]! PARTY TIME!", extra=OBJ_EXTRA_FMT)
                     elif ldapsChannelBindingAlwaysCheck == True:

@@ -148,7 +148,7 @@ class LdapInformer:
     #   a list of domain controllers.
     #
     def ResolveDCs(nameserverIp, fqdn):
-        dcList = []
+        dcList = set()
         DnsResolver = dns.resolver.Resolver()
         DnsResolver.timeout = 20
         DnsResolver.nameservers = [nameserverIp]
@@ -161,7 +161,7 @@ class LdapInformer:
         testout = str(dcQuery.response).split("\n")
         for line in testout:
             if "IN A" in line:
-                dcList.append(line.split(" ")[0].rstrip(line.split(" ")[0][-1]))
+                dcList.add(line.split(" ")[0].rstrip(line.split(" ")[0][-1]))
         
         return dcList
 
