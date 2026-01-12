@@ -1,4 +1,4 @@
-# Relay Informer
+# RelayInformer - Python
 Python tool that enables an operator to determine EPA enforcement levels from a Linux host. Since NTLM messages are constructed without the Windows SSP, channel binding and target name AV pairs can stripped from NTLM messages, meaning EPA enforcement level (required vs allowed/accepted/when supported) *can* be fully inferred. A cleartext password or NTLM hash for a domain account is required for each module except the LDAPS method (`--method LDAPS`) of the LDAP module
 
 ## Installation
