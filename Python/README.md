@@ -67,6 +67,9 @@ uv run relayinformer mssql --target sql.domain.local --user domain/username --pa
 
 # Specify custom port
 uv run relayinformer mssql -t sql.domain.local -u admin -p mypass --port 1434
+
+# Check several servers from a file (one hostname/IP per line)
+uv run relayinformer mssql -t sql-targets.txt -u domain/username -p mypass
 ```
 
 #### SMB
@@ -79,5 +82,11 @@ uv run relayinformer smb --target 192.168.1.10
 
 # Specify custom port
 uv run relayinformer smb -t file.domain.local --port 4450
+
+# Check several hosts, comma-separated or from a file (one hostname/IP per line)
+uv run relayinformer smb -t 192.168.1.10,192.168.1.11
+uv run relayinformer smb -t smb-targets.txt
 ```
+
+`--target` on the LDAP, MSSQL, and SMB modules accepts a single hostname/IP, a comma-separated list, or a file with one hostname/IP per line. Blank lines and lines starting with `#` are skipped.
 

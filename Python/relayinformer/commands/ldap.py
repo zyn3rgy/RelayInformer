@@ -3,11 +3,11 @@ import typer
 import getpass
 import asyncio
 from enum import Enum
-from pathlib import Path
 
 from relayinformer import console
 from relayinformer.logger import logger, OBJ_EXTRA_FMT
 from relayinformer.informers import LdapInformer
+from relayinformer.targets import parse_targets, TARGET_HELP
 
 
 class Method(str, Enum):
@@ -31,39 +31,12 @@ AUTH_PANEL = "Authentication"
 RUNTIME_PANEL = "Runtime"
 
 
-def _targets_from_target_option(target: str) -> list[str]:
-    target_path = Path(target).expanduser()
-
-    if not target_path.exists():
-        return [target]
-
-    if not target_path.is_file():
-        logger.error(f"--target points to an existing path that is not a file: {target_path}")
-        raise typer.Exit(1)
-
-    try:
-        targets = [
-            line.strip()
-            for line in target_path.read_text(encoding="utf-8").splitlines()
-            if line.strip() and not line.strip().startswith("#")
-        ]
-    except (OSError, UnicodeDecodeError) as e:
-        logger.error(f"Failed to read targets from {target_path}: {e}")
-        raise typer.Exit(1)
-
-    if not targets:
-        logger.error(f"No targets found in {target_path}")
-        raise typer.Exit(1)
-
-    return targets
-
-
 @app.callback(invoke_without_command=True, no_args_is_help=True)
 def main(
         ctx: typer.Context,
 
         method      : Method     = typer.Option(Method.LDAPS, '--method', help="LDAPS checks for channel binding, BOTH also checks LDAP for the signing bypass and, with credentials, signing enforcement", case_sensitive=False, rich_help_panel=RUNTIME_PANEL),
-        target      : str | None = typer.Option(None, '--target', '-t', help='Single DC hostname/IP or a file containing one DC hostname/IP per line', rich_help_panel=DIRECT_TARGET_PANEL),
+        target      : str | None = typer.Option(None, '--target', '-t', help=TARGET_HELP, rich_help_panel=DIRECT_TARGET_PANEL),
         dc_ip       : str | None = typer.Option(None, '--dc-ip', help='Bootstrap DC IPv4 address used for LDAP/LDAPS connections and DNS discovery', rich_help_panel=DISCOVERY_TARGET_PANEL),
         dns         : str | None = typer.Option(None, '--dns', help='DNS nameserver to use for SRV lookups (optional, overrides --dc-ip for DNS queries)', rich_help_panel=DISCOVERY_TARGET_PANEL),
         user        : str        = typer.Option(DEFAULTUSER, '-u', '--user', help='Domain username value', rich_help_panel=AUTH_PANEL),
@@ -93,7 +66,7 @@ def main(
             password = getpass.getpass(prompt="Password: ")
     
     if target is not None:
-        dc_list = _targets_from_target_option(target)
+        dc_list = parse_targets(target)
         if fqdn is None:
             fqdn = LdapInformer.InternalDomainFromAnonymousLdap(dc_list[0], timeout)
         logger.info("Using supplied Domain Controller targets")
