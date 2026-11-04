@@ -86,6 +86,33 @@ beacon_command_register(
 	"mssql-relay-informer [host] [opt: port] [opt: database]\n\nPort defaults to 1433, database defaults to 'master'"
 );
 
+alias ldap-bypass-informer {
+	local('$args $barch $host $dn $pw $port $trailing');
+
+	if(size(@_) < 4)
+	{
+		berror($1, beacon_command_detail("ldap-bypass-informer"));
+		return;
+	}
+	$barch    = barch($1);
+	$host     = $2;
+	$dn       = $3;
+	$pw       = $4;
+	$port     = iff(-istrue $5, int($5), 389);
+	$trailing = iff(-istrue $6, int($6), 0);
+
+	btask($1, "Tasked beacon to check LDAP signing bypass (switcheroo) vulnerability");
+
+	$args = bof_pack($1, "zzzii", $host, $dn, $pw, $port, $trailing);
+	beacon_inline_execute($1, readbof($1, "ldap-bypass-informer"), "go", $args);
+}
+
+beacon_command_register(
+	"ldap-bypass-informer",
+	"Check DC for LDAP signing bypass (switcheroo) vulnerability (Oct-2026 fix)",
+	"ldap-bypass-informer [host] [dn] [password] [opt: port=389] [opt: trailing=0]\n\ntrailing: 0=whoami (default), 1=rootdse"
+);
+
 alias smb-relay-informer {
     local('$args $barch $host');
 	

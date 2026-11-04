@@ -67,7 +67,7 @@ def main(
         password : str        = typer.Option(DEFAULTPASS, '-p', '--password',   help='Domain password',                                                        rich_help_panel=AUTH_PANEL),
         fqdn     : str | None = typer.Option(None,        '-d', '--domain',     help='Fully qualified domain name (constructs user@domain bind DN)',            rich_help_panel=AUTH_PANEL),
 
-        port     : int        = typer.Option(389,         '--port',             help='Plaintext LDAP port (default: 389). This is a patch-state detector over plaintext LDAP; LDAPS/636 is intentionally not supported.', rich_help_panel=RUNTIME_PANEL),
+        port     : int        = typer.Option(389,         '--port',             help='LDAP port (default: 389)',                                                                                                              rich_help_panel=RUNTIME_PANEL),
         trailing : Trailing   = typer.Option(Trailing.WHOAMI, '--trailing',     help='Trailing op stacked behind the bind (whoami or rootdse)',                 rich_help_panel=RUNTIME_PANEL),
         control  : bool       = typer.Option(False,       '--control',          help='Also run a no-stack control probe to confirm the signal is stacking-specific', rich_help_panel=RUNTIME_PANEL),
         timeout  : float      = typer.Option(5.0,         '--timeout',          help='Socket/read timeout in seconds',                                          rich_help_panel=RUNTIME_PANEL),

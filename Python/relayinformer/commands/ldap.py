@@ -8,6 +8,7 @@ from pathlib import Path
 from relayinformer import console
 from relayinformer.logger import logger, OBJ_EXTRA_FMT
 from relayinformer.informers import LdapInformer
+from relayinformer.informers.LdapBypassInformer import LdapBypassInformer
 
 
 class Method(str, Enum):
@@ -116,35 +117,58 @@ def main(
     print()
 
     logger.info("Checking DCs for LDAP NTLM relay protections")
-    
+
     informer = LdapInformer(fqdn, user, password)
+    bypass_informer = LdapBypassInformer("", "")
     logger.debug(f"Authing with values:\nUser: {user}\nPass: {password} \nDomain:  {fqdn}")
 
     for dc in dc_list:
         with console.status(f"[bold]Checking {dc}...\n", spinner="flip"):
             try:
+                signing_enforced = None
+
                 if method == Method.BOTH:
-                    if informer.RunLdap(dc):
-                        logger.info(f"\\[{dc}] (LDAP) server [red]enforcing[/] signing requirements", extra=OBJ_EXTRA_FMT)
+                    signing_enforced = informer.RunLdap(dc)
+                    if signing_enforced:
+                        logger.info(f"\\[{dc}] (LDAP) Signing:          [red]REQUIRED[/]", extra=OBJ_EXTRA_FMT)
                     else:
-                        logger.info(f"\\[{dc}] (LDAP) SERVER SIGNING REQUIREMENTS [green]NOT ENFORCED[/]!", extra=OBJ_EXTRA_FMT)
-                    
+                        logger.info(f"\\[{dc}] (LDAP) Signing:          [green]NOT REQUIRED[/]", extra=OBJ_EXTRA_FMT)
+
+                try:
+                    bp = bypass_informer.run(dc, 389, "whoami", False, float(timeout))
+                    if bp.get("error"):
+                        logger.warning(f"\\[{dc}] (LDAP) Signing Bypass:  probe error: {bp['error']}", extra=OBJ_EXTRA_FMT)
+                    else:
+                        bv = bp["verdict"]
+                        if bv == "UNPATCHED":
+                            if signing_enforced is True:
+                                logger.info(f"\\[{dc}] (LDAP) Signing Bypass:  [green]UNPATCHED[/]   -> relay viable (signing enforced, CVE-2026-70229 unpatched)", extra=OBJ_EXTRA_FMT)
+                            else:
+                                logger.info(f"\\[{dc}] (LDAP) Signing Bypass:  [green]UNPATCHED[/]   (CVE-2026-70229 unpatched)", extra=OBJ_EXTRA_FMT)
+                        elif bv == "PATCHED":
+                            if signing_enforced is True:
+                                logger.info(f"\\[{dc}] (LDAP) Signing Bypass:  [red]PATCHED[/]     -> relay blocked (signing required, CVE-2026-70229 patched)", extra=OBJ_EXTRA_FMT)
+                            else:
+                                logger.info(f"\\[{dc}] (LDAP) Signing Bypass:  [red]PATCHED[/]     (CVE-2026-70229 patched)", extra=OBJ_EXTRA_FMT)
+                        else:
+                            logger.warning(f"\\[{dc}] (LDAP) Signing Bypass:  INCONCLUSIVE -> no bind response", extra=OBJ_EXTRA_FMT)
+                except Exception as bp_e:
+                    logger.warning(f"\\[{dc}] (LDAP) Signing Bypass:  probe exception: {bp_e}", extra=OBJ_EXTRA_FMT)
+
                 if LdapInformer.DoesLdapsCompleteHandshake(dc):
                     ldapsChannelBindingAlwaysCheck = informer.RunLdapsNoEpa(dc)
                     ldapsChannelBindingWhenSupportedCheck = asyncio.run(
                         informer.RunLdapsWithEpa(dc, timeout)
                     )
                     if ldapsChannelBindingAlwaysCheck == False and ldapsChannelBindingWhenSupportedCheck == True:
-                        logger.info(f"\\[{dc}] (LDAPS) channel binding is set to [yellow]when supported[/] - " \
-                                    "this may prevent an NTLM relay depending on the client's support for channel binding", extra=OBJ_EXTRA_FMT)
+                        logger.info(f"\\[{dc}] (LDAPS) ChannelBind:     [yellow]REQUIRED[/] (when supported)", extra=OBJ_EXTRA_FMT)
                     elif ldapsChannelBindingAlwaysCheck == False and ldapsChannelBindingWhenSupportedCheck == False:
-                            logger.info(f"\\[{dc}] (LDAPS) CHANNEL BINDING SET TO [green]NEVER[/]! PARTY TIME!", extra=OBJ_EXTRA_FMT)
+                            logger.info(f"\\[{dc}] (LDAPS) ChannelBind:     [green]NOT REQUIRED[/]", extra=OBJ_EXTRA_FMT)
                     elif ldapsChannelBindingAlwaysCheck == True:
-                        logger.info(f"\\[{dc}] (LDAPS) channel binding set to [red]required[/], no fun allowed", extra=OBJ_EXTRA_FMT)
+                        logger.info(f"\\[{dc}] (LDAPS) ChannelBind:     [red]REQUIRED[/]", extra=OBJ_EXTRA_FMT)
                     else:
                         logger.error(f"\\[{dc}] Something went wrong...")
                         logger.debug("For troubleshooting:\nldapsChannelBindingAlwaysCheck - " +str(ldapsChannelBindingAlwaysCheck)+"\nldapsChannelBindingWhenSupportedCheck: "+str(ldapsChannelBindingWhenSupportedCheck))
-                        #exit()        
                 else:
                     logger.warning(f"{dc} cannot complete TLS handshake, cert likely not configured")
             except Exception as e:
