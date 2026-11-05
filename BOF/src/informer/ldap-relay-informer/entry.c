@@ -278,9 +278,6 @@ static int bp_probe(const char *host) {
 // ─── Protection check ────────────────────────────────────────────────────────
 
 void CheckProtection(char* host) {
-    // Run bypass probe first (before any WLDAP32 calls) — result printed after signing
-    int bypass = bp_probe(host);
-
     PVOID vehIscW = NULL; void* addrIscW = NULL;
     if (!HWBP_SetOnApiEx("sspicli.dll", "InitializeSecurityContextW", 1, ISC_VEH, &vehIscW, &addrIscW, FALSE)) {
 		internal_printf("Failed to set HWBP on sspicli!InitializeSecurityContextW (DR1).\n");
@@ -293,30 +290,34 @@ void CheckProtection(char* host) {
     BOOL signing_req = (noSigning == LDAP_STRONG_AUTH_REQUIRED);
 
     if (noSigning == LDAP_STRONG_AUTH_REQUIRED) {
-        internal_printf("[%s] (LDAP) Signing:     REQUIRED\n", host);
+        internal_printf("[%s] (LDAP) server ALWAYS REQUIRES signing\n", host);
     } else if (noSigning == LDAP_SUCCESS) {
-        internal_printf("[%s] (LDAP) Signing:     NOT REQUIRED\n", host);
+        internal_printf("[%s] (LDAP) server signing requirement is OFF\n", host);
     } else {
-        internal_printf("[%s] (LDAP) Signing:     unknown (rc:%lu)\n", host, noSigning);
+        internal_printf("[%s] (LDAP) signing requirement unknown - result code:%lu\n", host, noSigning);
     }
 
-    // ── 2. Bypass verdict (with relay context when signing enforced) ──
-    if (bypass == BP_UNPATCHED) {
-        if (signing_req)
-            internal_printf("[%s] (LDAP) Signing Bypass: UNPATCHED   -> relay viable (signing enforced, CVE-2026-70229 unpatched)\n", host);
-        else
-            internal_printf("[%s] (LDAP) Signing Bypass: UNPATCHED   (CVE-2026-70229 unpatched)\n", host);
-    } else if (bypass == BP_PATCHED) {
-        if (signing_req)
-            internal_printf("[%s] (LDAP) Signing Bypass: PATCHED     -> relay blocked (signing required, CVE-2026-70229 patched)\n", host);
-        else
-            internal_printf("[%s] (LDAP) Signing Bypass: PATCHED     (CVE-2026-70229 patched)\n", host);
-    } else if (bypass == BP_DNS_FAIL) {
-        internal_printf("[%s] (LDAP) Signing Bypass: DNS resolution failed\n", host);
-    } else if (bypass == BP_CONNECT_FAIL) {
-        internal_printf("[%s] (LDAP) Signing Bypass: port 389 unreachable\n", host);
-    } else {
-        internal_printf("[%s] (LDAP) Signing Bypass: INCONCLUSIVE — no bind response\n", host);
+    // ── 2. Bypass verdict (only relevant when signing is not confirmed off) ──
+    if (noSigning != LDAP_SUCCESS) {
+        int bypass = bp_probe(host);
+
+        if (bypass == BP_UNPATCHED) {
+            if (signing_req)
+                internal_printf("[%s] (LDAP) Signing Bypass: UNPATCHED   -> relay viable (signing enforced, CVE-2026-70229 unpatched)\n", host);
+            else
+                internal_printf("[%s] (LDAP) Signing Bypass: UNPATCHED   (CVE-2026-70229 unpatched)\n", host);
+        } else if (bypass == BP_PATCHED) {
+            if (signing_req)
+                internal_printf("[%s] (LDAP) Signing Bypass: PATCHED     -> relay blocked (signing required, CVE-2026-70229 patched)\n", host);
+            else
+                internal_printf("[%s] (LDAP) Signing Bypass: PATCHED     (CVE-2026-70229 patched)\n", host);
+        } else if (bypass == BP_DNS_FAIL) {
+            internal_printf("[%s] (LDAP) Signing Bypass: DNS resolution failed\n", host);
+        } else if (bypass == BP_CONNECT_FAIL) {
+            internal_printf("[%s] (LDAP) Signing Bypass: port 389 unreachable\n", host);
+        } else {
+            internal_printf("[%s] (LDAP) Signing Bypass: INCONCLUSIVE — no bind response\n", host);
+        }
     }
 
     // ── 3. LDAPS channel binding ──────────────────────────────────
@@ -325,11 +326,11 @@ void CheckProtection(char* host) {
     ULONG zeroCBT = trigger_ldap_auth(host, TRUE);
 
     if (zeroCBT == LDAP_INVALID_CREDENTIALS) {
-        internal_printf("[%s] (LDAPS) ChannelBind: REQUIRED\n", host);
+        internal_printf("[%s] (LDAPS) channel binding token requirement is set to ALWAYS or WHEN SUPPORTED\n", host);
     } else if (zeroCBT == LDAP_SUCCESS) {
-        internal_printf("[%s] (LDAPS) ChannelBind: NOT REQUIRED\n", host);
+        internal_printf("[%s] (LDAPS) channel binding token requirement is set to NEVER\n", host);
     } else {
-        internal_printf("[%s] (LDAPS) ChannelBind: unknown (rc:%lu)\n", host, zeroCBT);
+        internal_printf("[%s] (LDAPS) channel binding token requirement unknown - result code:%lu\n", host, zeroCBT);
     }
 
     HWBP_Clear(1);
