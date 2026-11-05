@@ -134,26 +134,21 @@ def main(
                     else:
                         logger.info(f"\\[{dc}] (LDAP) SERVER SIGNING REQUIREMENTS [green]NOT ENFORCED[/]!", extra=OBJ_EXTRA_FMT)
 
-                try:
-                    bp = bypass_informer.run(dc, 389, "whoami", False, float(timeout))
-                    if bp.get("error"):
-                        logger.warning(f"\\[{dc}] (LDAP) signing bypass probe error: {bp['error']}", extra=OBJ_EXTRA_FMT)
-                    else:
-                        bv = bp["verdict"]
-                        if bv == "UNPATCHED":
-                            if signing_enforced is True:
+                if signing_enforced is True:
+                    try:
+                        bp = bypass_informer.run(dc, 389, "whoami", False, float(timeout))
+                        if bp.get("error"):
+                            logger.warning(f"\\[{dc}] (LDAP) signing bypass probe error: {bp['error']}", extra=OBJ_EXTRA_FMT)
+                        else:
+                            bv = bp["verdict"]
+                            if bv == "UNPATCHED":
                                 logger.info(f"\\[{dc}] (LDAP) [green]SIGNING BYPASS UNPATCHED[/] - relay [green]VIABLE[/]! (signing enforced, CVE-2026-70229 unpatched)", extra=OBJ_EXTRA_FMT)
-                            else:
-                                logger.info(f"\\[{dc}] (LDAP) [green]SIGNING BYPASS UNPATCHED[/] (CVE-2026-70229 unpatched)", extra=OBJ_EXTRA_FMT)
-                        elif bv == "PATCHED":
-                            if signing_enforced is True:
+                            elif bv == "PATCHED":
                                 logger.info(f"\\[{dc}] (LDAP) signing bypass [red]patched[/] - relay blocked (signing enforced, CVE-2026-70229 patched)", extra=OBJ_EXTRA_FMT)
                             else:
-                                logger.info(f"\\[{dc}] (LDAP) signing bypass [red]patched[/] (CVE-2026-70229 patched)", extra=OBJ_EXTRA_FMT)
-                        else:
-                            logger.warning(f"\\[{dc}] (LDAP) signing bypass inconclusive - no bind response", extra=OBJ_EXTRA_FMT)
-                except Exception as bp_e:
-                    logger.warning(f"\\[{dc}] (LDAP) signing bypass probe exception: {bp_e}", extra=OBJ_EXTRA_FMT)
+                                logger.warning(f"\\[{dc}] (LDAP) signing bypass inconclusive - no bind response", extra=OBJ_EXTRA_FMT)
+                    except Exception as bp_e:
+                        logger.warning(f"\\[{dc}] (LDAP) signing bypass probe exception: {bp_e}", extra=OBJ_EXTRA_FMT)
 
                 if LdapInformer.DoesLdapsCompleteHandshake(dc):
                     ldapsChannelBindingAlwaysCheck = informer.RunLdapsNoEpa(dc)
