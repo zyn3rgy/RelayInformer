@@ -1,4 +1,3 @@
 from relayinformer.informers.LdapInformer import LdapInformer
 from relayinformer.informers.MssqlInformer import MssqlInformer
 from relayinformer.informers.HttpInformer import HttpInformer
-from relayinformer.informers.LdapBypassInformer import LdapBypassInformer

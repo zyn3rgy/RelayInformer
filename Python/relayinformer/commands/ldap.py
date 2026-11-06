@@ -8,7 +8,6 @@ from pathlib import Path
 from relayinformer import console
 from relayinformer.logger import logger, OBJ_EXTRA_FMT
 from relayinformer.informers import LdapInformer
-from relayinformer.informers.LdapBypassInformer import LdapBypassInformer
 
 
 class Method(str, Enum):
@@ -20,7 +19,8 @@ app = typer.Typer()
 COMMAND_NAME = "ldap"
 HELP = "Checks Domain Controllers for LDAP authentication protection."  \
         " You can check for only LDAPS protections (channel binding), this is done unauthenticated." \
-        " Alternatively you can check for both LDAPS and LDAP (server signing) protections. This requires a successful LDAP bind."
+        " Alternatively you can check for both LDAPS and LDAP protections: the LDAP signing bypass (unauthenticated)" \
+        " and, when credentials are supplied, LDAP server signing enforcement (requires a successful LDAP bind)."
 
 
 DEFAULTPASS = "defaultpass"
@@ -62,7 +62,7 @@ def _targets_from_target_option(target: str) -> list[str]:
 def main(
         ctx: typer.Context,
 
-        method      : Method     = typer.Option(Method.LDAPS, '--method', help="LDAPS checks for channel binding, BOTH checks for LDAP signing and LDAP channel binding [authentication required]", case_sensitive=False, rich_help_panel=RUNTIME_PANEL),
+        method      : Method     = typer.Option(Method.LDAPS, '--method', help="LDAPS checks for channel binding, BOTH also checks LDAP for the signing bypass and, with credentials, signing enforcement", case_sensitive=False, rich_help_panel=RUNTIME_PANEL),
         target      : str | None = typer.Option(None, '--target', '-t', help='Single DC hostname/IP or a file containing one DC hostname/IP per line', rich_help_panel=DIRECT_TARGET_PANEL),
         dc_ip       : str | None = typer.Option(None, '--dc-ip', help='Bootstrap DC IPv4 address used for LDAP/LDAPS connections and DNS discovery', rich_help_panel=DISCOVERY_TARGET_PANEL),
         dns         : str | None = typer.Option(None, '--dns', help='DNS nameserver to use for SRV lookups (optional, overrides --dc-ip for DNS queries)', rich_help_panel=DISCOVERY_TARGET_PANEL),
@@ -82,22 +82,15 @@ def main(
         logger.warning("Either --target or --dc-ip must be provided")
         raise typer.Exit(1)
 
-    if method == Method.BOTH and user == DEFAULTUSER:
-        logger.warning("Using BOTH method requires a username parameter")
-        raise typer.Exit(1)
-    
-    if method == Method.BOTH:
-        if nthash is not None:
-            nthash = f"aad3b435b51404eeaad3b435b51404ee:{nthash}" 
-        
-        elif password is not DEFAULTPASS:
-            pass
+    # Signing enforcement needs an authenticated bind; without a username, BOTH only runs
+    #   the (unauthenticated) signing bypass probe on LDAP.
+    check_signing = method == Method.BOTH and user != DEFAULTUSER
 
-        else:
-            logger.warning("Using BOTH method requires a password or NT hash")
-        
-    if method == Method.BOTH and password == DEFAULTPASS and nthash is None:
-        password = getpass.getpass(prompt="Password: ")
+    if check_signing:
+        if nthash is not None:
+            nthash = f"aad3b435b51404eeaad3b435b51404ee:{nthash}"
+        elif password == DEFAULTPASS:
+            password = getpass.getpass(prompt="Password: ")
     
     if target is not None:
         dc_list = _targets_from_target_option(target)
@@ -119,36 +112,39 @@ def main(
     logger.info("Checking DCs for LDAP NTLM relay protections")
 
     informer = LdapInformer(fqdn, user, password)
-    bypass_informer = LdapBypassInformer("", "")
-    logger.debug(f"Authing with values:\nUser: {user}\nPass: {password} \nDomain:  {fqdn}")
+    if user == DEFAULTUSER:
+        logger.debug(f"No credentials supplied - LDAPS channel binding checks will bind as placeholder {DEFAULTUSER}/{DEFAULTPASS} (the resulting error reveals the setting); the LDAP signing bypass probe uses an anonymous bind")
+    else:
+        logger.debug(f"Authing with values:\nUser: {user}\nPass: {password} \nDomain:  {fqdn}")
 
     for dc in dc_list:
         with console.status(f"[bold]Checking {dc}...\n", spinner="flip"):
             try:
-                signing_enforced = None
-
                 if method == Method.BOTH:
-                    signing_enforced = informer.RunLdap(dc)
-                    if signing_enforced:
-                        logger.info(f"\\[{dc}] (LDAP) server [red]enforcing[/] signing requirements", extra=OBJ_EXTRA_FMT)
-                    else:
-                        logger.info(f"\\[{dc}] (LDAP) SERVER SIGNING REQUIREMENTS [green]NOT ENFORCED[/]!", extra=OBJ_EXTRA_FMT)
-
-                if signing_enforced is True:
-                    try:
-                        bp = bypass_informer.run(dc, 389, "whoami", False, float(timeout))
-                        if bp.get("error"):
-                            logger.warning(f"\\[{dc}] (LDAP) signing bypass probe error: {bp['error']}", extra=OBJ_EXTRA_FMT)
+                    signing_enforced = None
+                    if check_signing:
+                        signing_enforced = informer.RunLdap(dc)
+                        if signing_enforced:
+                            logger.info(f"\\[{dc}] (LDAP) server [red]enforcing[/] signing requirements", extra=OBJ_EXTRA_FMT)
                         else:
-                            bv = bp["verdict"]
-                            if bv == "UNPATCHED":
-                                logger.info(f"\\[{dc}] (LDAP) [green]SIGNING BYPASS UNPATCHED[/] - relay [green]VIABLE[/]! (signing enforced, CVE-2026-70229 unpatched)", extra=OBJ_EXTRA_FMT)
-                            elif bv == "PATCHED":
-                                logger.info(f"\\[{dc}] (LDAP) signing bypass [red]patched[/] - relay blocked (signing enforced, CVE-2026-70229 patched)", extra=OBJ_EXTRA_FMT)
-                            else:
+                            logger.info(f"\\[{dc}] (LDAP) SERVER SIGNING REQUIREMENTS [green]NOT ENFORCED[/]!", extra=OBJ_EXTRA_FMT)
+                    else:
+                        logger.info(f"\\[{dc}] (LDAP) signing enforcement [yellow]not checked[/] - run with credentials to evaluate", extra=OBJ_EXTRA_FMT)
+
+                    # The bypass only matters when signing is enforced, or when that is unknown
+                    if signing_enforced is True or not check_signing:
+                        try:
+                            verdict, bind_rc = LdapInformer.RunLdapSigningBypass(dc, timeout)
+                            if verdict == "UNPATCHED":
+                                logger.info(f"\\[{dc}] (LDAP) [green]SIGNING BYPASS UNPATCHED[/] (CVE-2026-70229)", extra=OBJ_EXTRA_FMT)
+                            elif verdict == "PATCHED":
+                                logger.info(f"\\[{dc}] (LDAP) signing bypass [red]patched[/] (CVE-2026-70229)", extra=OBJ_EXTRA_FMT)
+                            elif bind_rc is None:
                                 logger.warning(f"\\[{dc}] (LDAP) signing bypass inconclusive - no bind response", extra=OBJ_EXTRA_FMT)
-                    except Exception as bp_e:
-                        logger.warning(f"\\[{dc}] (LDAP) signing bypass probe exception: {bp_e}", extra=OBJ_EXTRA_FMT)
+                            else:
+                                logger.warning(f"\\[{dc}] (LDAP) signing bypass inconclusive - whoami unanswered even when not stacked", extra=OBJ_EXTRA_FMT)
+                        except Exception as bp_e:
+                            logger.warning(f"\\[{dc}] (LDAP) signing bypass probe exception: {bp_e}", extra=OBJ_EXTRA_FMT)
 
                 if LdapInformer.DoesLdapsCompleteHandshake(dc):
                     ldapsChannelBindingAlwaysCheck = informer.RunLdapsNoEpa(dc)
