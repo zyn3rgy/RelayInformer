@@ -3,12 +3,20 @@ import dns.resolver
 import ldap3
 import ssl
 import socket
+import time
 import asyncio
 import typer
 from msldap.connection import MSLDAPClientConnection
 from msldap.commons.factory import LDAPConnectionFactory
 
 from relayinformer.logger import logger
+
+
+# Fixed LDAP messages for the signing bypass probe. No credentials are ever sent.
+# messageID 1: BindRequest, version 3, empty DN, empty simple password (anonymous bind)
+LDAP_ANON_BIND = bytes.fromhex("300c020101600702010304008000")
+# messageID 2: ExtendedRequest "Who am I?" (1.3.6.1.4.1.4203.1.11.3)
+LDAP_WHOAMI = bytes.fromhex("301e02010277198017312e332e362e312e342e312e343230332e312e31312e33")
 
 
 class LdapInformer:
@@ -43,7 +51,96 @@ class LdapInformer:
         
 
     #
-    # Domain Controllers do not have a certificate setup for LDAPS on port 636 by default. 
+    # Check for the LDAP signing bypass (CVE-2026-70229). An anonymous bind and a
+    #   whoami are sent stacked in a single write. An unpatched DC answers both; a
+    #   patched DC discards the stacked whoami. If the whoami goes unanswered, a control
+    #   run sends the same two messages one at a time to confirm the DC does answer
+    #   whoami normally, so the silence can be attributed to the patch.
+    #   Returns (verdict, bind_rc): verdict is "UNPATCHED", "PATCHED" or "INCONCLUSIVE".
+    #
+    @staticmethod
+    def RunLdapSigningBypass(target, timeout):
+        with socket.create_connection((target, 389), timeout=timeout) as sock:
+            msgs = LdapInformer._LdapExchange(sock, LDAP_ANON_BIND + LDAP_WHOAMI, 2, timeout)
+
+        bind_rc = next((rc for msgid, rc in msgs if msgid == 1), None)
+        logger.debug(f"{target} - bypass probe bind rc={bind_rc}, responses={msgs}")
+        if any(msgid == 2 for msgid, _ in msgs):
+            return "UNPATCHED", bind_rc
+        if bind_rc is None:
+            return "INCONCLUSIVE", None
+
+        with socket.create_connection((target, 389), timeout=timeout) as sock:
+            LdapInformer._LdapExchange(sock, LDAP_ANON_BIND, 1, timeout)
+            control = LdapInformer._LdapExchange(sock, LDAP_WHOAMI, 2, timeout)
+        logger.debug(f"{target} - bypass control responses={control}")
+        if any(msgid == 2 for msgid, _ in control):
+            return "PATCHED", bind_rc
+        return "INCONCLUSIVE", bind_rc
+
+    #
+    # Send data, then read until a response with messageID want_msgid arrives, the
+    #   server closes the connection, or timeout seconds pass in total.
+    #
+    @staticmethod
+    def _LdapExchange(sock, data, want_msgid, timeout):
+        sock.sendall(data)
+        deadline = time.monotonic() + timeout
+        buf = b""
+        while True:
+            msgs = LdapInformer._ParseLdapMessages(buf)
+            remaining = deadline - time.monotonic()
+            if any(msgid == want_msgid for msgid, _ in msgs) or remaining <= 0:
+                return msgs
+            sock.settimeout(remaining)
+            try:
+                chunk = sock.recv(8192)
+            except OSError:
+                return msgs
+            if not chunk:
+                return msgs
+            buf += chunk
+
+    #
+    # Minimal BER parsing: returns [(messageID, bind_rc)] for each complete LDAPMessage
+    #   in buf. bind_rc is the resultCode of a BindResponse, None for anything else.
+    #
+    @staticmethod
+    def _ParseLdapMessages(buf):
+        def read_tlv(i):
+            # (tag, value_start, value_end) of the TLV at buf[i], or None if incomplete
+            if i + 2 > len(buf):
+                return None
+            tag, length, j = buf[i], buf[i + 1], i + 2
+            if length & 0x80:
+                n = length & 0x7F
+                if j + n > len(buf):
+                    return None
+                length = int.from_bytes(buf[j:j + n], "big")
+                j += n
+            if j + length > len(buf):
+                return None
+            return tag, j, j + length
+
+        msgs = []
+        i = 0
+        while (msg := read_tlv(i)) and msg[0] == 0x30:
+            msgid_tlv = read_tlv(msg[1])
+            if not msgid_tlv or msgid_tlv[0] != 0x02:
+                break
+            msgid = int.from_bytes(buf[msgid_tlv[1]:msgid_tlv[2]], "big")
+            bind_rc = None
+            op = read_tlv(msgid_tlv[2])
+            if op and op[0] == 0x61:  # BindResponse
+                rc = read_tlv(op[1])
+                if rc and rc[0] == 0x0A:
+                    bind_rc = int.from_bytes(buf[rc[1]:rc[2]], "big")
+            msgs.append((msgid, bind_rc))
+            i = msg[2]
+        return msgs
+
+    #
+    # Domain Controllers do not have a certificate setup for LDAPS on port 636 by default.
     #   If this has not been setup, the TLS handshake will hang and you will not be able to 
     #   interact with LDAPS. The condition for the certificate existing as it should is either 
     #    an error regarding the fact that the certificate is self-signed, or no error at all. 

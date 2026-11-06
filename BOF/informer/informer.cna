@@ -56,8 +56,8 @@ alias ldap-relay-informer {
 }
 
 beacon_command_register(
-	"ldap-relay-informer", 
-	"Inform on LDAP signing enforcement and LDAPS channel binding enforcement", 
+	"ldap-relay-informer",
+	"Inform on LDAP signing enforcement, signing bypass patch status, and LDAPS channel binding enforcement",
 	"ldap-relay-informer [host|all]\n\nUse 'all' to query DNS for DCs and check all DCs in the domain"
 );
 

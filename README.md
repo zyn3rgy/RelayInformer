@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-Python and BOF utilites to the determine EPA enforcement levels of popular NTLM relay targets from the offensive perspective
+Python and BOF utilities to determine EPA enforcement levels of popular NTLM relay targets from the offensive perspective
 <br>
 <br>
 <a href="https://github.com/specterops#mythic">
@@ -14,9 +14,9 @@ Python and BOF utilites to the determine EPA enforcement levels of popular NTLM 
 
 ## Introduction
 
-These tools were written to compliment research summarized in a [blog post](https://specterops.io/blog/2025/11/25/less-praying-more-relaying-enumerating-epa-enforcement-for-mssql-and-https/) / [presentation](https://specterops.zoom.us/webinar/register/WN_kKbaJbJXRBayoePEw4eawQ#/registration) by [@Tw1sm](https://x.com/Tw1sm) and myself. 
+These tools were written to complement research summarized in a [blog post](https://specterops.io/blog/2025/11/25/less-praying-more-relaying-enumerating-epa-enforcement-for-mssql-and-https/) / [presentation](https://specterops.zoom.us/webinar/register/WN_kKbaJbJXRBayoePEw4eawQ#/registration) by [@Tw1sm](https://x.com/Tw1sm) and myself. 
 
-NTLM relay is still a widely abused attack vector during pentests and red teams alike. Depending on your network access perspective, setting up for a relay can be an involved and error-prone process (e.g. over C2). The goal of this toolset is to better inform your NTLM relays, especially in cases where Extended Protection for Authentication (EPA) could be enforced as a mitigation.
+NTLM relay is still a widely abused attack vector during pentests and red teams alike. Depending on your network access perspective, setting up for a relay can be an involved and error-prone process (e.g. over C2). The goal of this toolset is to better inform your NTLM relays, especially in cases where Extended Protection for Authentication (EPA) could be enforced as a mitigation. The LDAP checks also report whether Domain Controllers that enforce LDAP signing are patched against the [LDAP signing bypass](https://specterops.io/blog/2026/10/23/ldap-signing-bypass-ntlm-relay/) (CVE-2026-70229).
 
 ## Usage
 
@@ -28,4 +28,5 @@ See the [RelayInformer [Python]](https://github.com/zyn3rgy/RelayInformer/tree/m
 - [@lowercase_drm](https://x.com/lowercase_drm) - early open-source implementation of LDAP channel binding in LDAP3 library
 - **Pierre Milioni** & **Geoffrey Bertoli** - ["A study on Windows HTTP Authentication (Part II)](https://www.synacktiv.com/publications/a-study-on-windows-http-authentication-part-ii)
 - [Adam Crosser](https://x.com/UNC1739) - ["Relaying to ADFS Attacks"](https://www.praetorian.com/blog/relaying-to-adfs-attacks/)
+- [Raj Patel](https://x.com/GrayHatKiller) - ["Signed, Sealed, and Relayed, NTLM-style: Bypassing LDAP Signing Through Reauthentication"](https://specterops.io/blog/2026/10/23/ldap-signing-bypass-ntlm-relay/)
 - Open-source developers contributing to libraries such as [Impacket](https://github.com/fortra/impacket), [msldap](https://github.com/skelsec/msldap), [LdapSignCheck](https://github.com/cube0x0/LdapSignCheck), and many more
