@@ -129,155 +129,112 @@ static ULONG trigger_ldap_auth(char* host, BOOL ldaps) {
     return lRtn;
 }
 
-// ─── LDAP Signing Bypass Probe (Oct-2026 switcheroo) ────────────────────────
-#define BP_UNPATCHED     0
-#define BP_PATCHED       1
-#define BP_DNS_FAIL      2
-#define BP_CONNECT_FAIL  3
-#define BP_INCONCLUSIVE  4
+// LDAP signing bypass probe (CVE-2026-70229). Fixed messages, no credentials are sent:
+//   messageID 1: BindRequest, v3, empty DN, empty simple password (anonymous bind)
+//   messageID 2: ExtendedRequest "Who am I?" (1.3.6.1.4.1.4203.1.11.3)
+static const unsigned char BP_MSGS[] = {
+    0x30,0x0c,0x02,0x01,0x01,0x60,0x07,0x02,0x01,0x03,0x04,0x00,0x80,0x00,
+    0x30,0x1e,0x02,0x01,0x02,0x77,0x19,0x80,0x17,
+    '1','.','3','.','6','.','1','.','4','.','1','.','4','2','0','3','.','1','.','1','1','.','3'
+};
+#define BP_BIND_LEN 14
 
-static int bp_ber_lbytes(int n) {
-    if (n < 0x80) return 1;
-    int c = 1, v = n; while (v >>= 8) c++; return c + 1;
-}
+#define BP_UNPATCHED  0
+#define BP_PATCHED    1
+#define BP_ERROR      2  // couldn't connect to port 389
+#define BP_NO_BIND    3  // inconclusive: no bind response
+#define BP_NO_CONTROL 4  // inconclusive: whoami unanswered even when not stacked
 
-static unsigned char* bp_tlv(unsigned char tag, const unsigned char *val, int vlen, int *outlen) {
-    int lb = bp_ber_lbytes(vlen);
-    *outlen = 1 + lb + vlen;
-    unsigned char *b = (unsigned char*)MSVCRT$malloc(*outlen);
-    if (!b) return NULL;
-    b[0] = tag;
-    if (vlen < 0x80) { b[1] = (unsigned char)vlen; }
-    else {
-        int nb = 0, v = vlen; unsigned char tmp[4];
-        while (v) { tmp[nb++] = (unsigned char)(v & 0xFF); v >>= 8; }
-        b[1] = (unsigned char)(0x80 | nb);
-        for (int i = 0; i < nb; i++) b[2+i] = tmp[nb-1-i];
-    }
-    if (vlen > 0 && val) MSVCRT$memcpy(b + 1 + lb, val, vlen);
-    return b;
-}
-
-static unsigned char* bp_enc_int(int n, int *outlen) {
-    unsigned char body[5]; int blen = 0;
-    if (n == 0) { body[0] = 0; blen = 1; }
-    else {
-        unsigned int v = (unsigned int)n;
-        while (v) { body[blen++] = (unsigned char)(v & 0xFF); v >>= 8; }
-        for (int i=0, j=blen-1; i<j; i++,j--) { unsigned char t=body[i]; body[i]=body[j]; body[j]=t; }
-        if (body[0] & 0x80) { MSVCRT$memmove(body+1, body, blen); body[0]=0; blen++; }
-    }
-    return bp_tlv(0x02, body, blen, outlen);
-}
-
-static unsigned char* bp_enc_octet(const char *s, int *outlen) {
-    return bp_tlv(0x04, (const unsigned char*)s, (int)MSVCRT$strlen(s), outlen);
-}
-
-static unsigned char* bp_ldap_msg(int msgid, const unsigned char *op, int oplen, int *outlen) {
-    int il; unsigned char *ibuf = bp_enc_int(msgid, &il);
-    int inner_len = il + oplen;
-    unsigned char *inner = (unsigned char*)MSVCRT$malloc(inner_len);
-    MSVCRT$memcpy(inner, ibuf, il); MSVCRT$memcpy(inner + il, op, oplen); MSVCRT$free(ibuf);
-    unsigned char *msg = bp_tlv(0x30, inner, inner_len, outlen); MSVCRT$free(inner);
-    return msg;
-}
-
-static unsigned char* bp_bind_req(int *outlen) {
-    int vl, nl, sl;
-    unsigned char *ver  = bp_enc_int(3, &vl);
-    unsigned char *name = bp_enc_octet("", &nl);
-    unsigned char *simp = bp_tlv(0x80, (const unsigned char*)"", 0, &sl);
-    int body_len = vl + nl + sl;
-    unsigned char *body = (unsigned char*)MSVCRT$malloc(body_len);
-    MSVCRT$memcpy(body, ver, vl); MSVCRT$memcpy(body+vl, name, nl); MSVCRT$memcpy(body+vl+nl, simp, sl);
-    MSVCRT$free(ver); MSVCRT$free(name); MSVCRT$free(simp);
-    unsigned char *req = bp_tlv(0x60, body, body_len, outlen); MSVCRT$free(body);
-    return req;
-}
-
-static unsigned char* bp_whoami_req(int *outlen) {
-    const char *oid = "1.3.6.1.4.1.4203.1.11.3";
-    int il; unsigned char *inner = bp_tlv(0x80, (const unsigned char*)oid, (int)MSVCRT$strlen(oid), &il);
-    unsigned char *req = bp_tlv(0x77, inner, il, outlen); MSVCRT$free(inner);
-    return req;
-}
-
+// Returns 1 if a complete reply to messageID 2 is in buf; sets *bind_rc to the
+//   resultCode of the messageID 1 BindResponse, or -1 if there isn't one yet.
 static int bp_parse(const unsigned char *buf, int len, int *bind_rc) {
-    int saw2 = 0; *bind_rc = -1; int i = 0;
-    while (i + 2 <= len) {
-        if (buf[i] != 0x30) break; i++;
-        int lb = buf[i++], mlen = 0;
-        if (lb & 0x80) { int nb = lb & 0x7F; if (i + nb > len) break; while (nb--) mlen = (mlen << 8) | buf[i++]; }
-        else { mlen = lb; }
-        if (i + mlen > len) break;
-        const unsigned char *m = buf + i; int p = 0;
-        if (p+2 > mlen || m[p] != 0x02) { i += mlen; continue; } p++;
-        int idlen = m[p++]; if (p + idlen > mlen) { i += mlen; continue; }
-        int msgid = 0; for (int k = 0; k < idlen; k++) msgid = (msgid << 8) | m[p++];
-        if (msgid == 2) saw2 = 1;
-        if (msgid == 1 && p < mlen && m[p] == 0x61) {
-            p++;
-            int oplen = m[p++];
-            if (oplen & 0x80) { int nb = oplen & 0x7F; oplen = 0; while (nb-- && p < mlen) oplen = (oplen << 8) | m[p++]; }
-            if (p + 2 <= mlen && m[p] == 0x0A) { p++; int rclen = m[p++]; if (p + rclen <= mlen && rclen >= 1) *bind_rc = m[p]; }
+    int saw2 = 0, i = 0;
+    *bind_rc = -1;
+    while (i + 2 <= len && buf[i] == 0x30) {
+        unsigned int mlen = buf[i + 1];  // unsigned: AD sends 4-byte lengths, which must not go negative
+        i += 2;
+        if (mlen & 0x80) {
+            int nb = mlen & 0x7F;
+            if (nb > 4 || i + nb > len) break;
+            for (mlen = 0; nb > 0; nb--) mlen = (mlen << 8) | buf[i++];
+        }
+        if (mlen > (unsigned int)(len - i)) break;
+        const unsigned char *m = buf + i;  // 02 01 <messageID> <protocolOp>...
+        if (mlen >= 3 && m[0] == 0x02 && m[1] == 0x01) {
+            if (m[2] == 2) saw2 = 1;
+            if (m[2] == 1 && mlen >= 5 && m[3] == 0x61) {  // BindResponse; resultCode follows its length
+                int p = 5 + ((m[4] & 0x80) ? (m[4] & 0x7F) : 0);
+                if (p + 3 <= mlen && m[p] == 0x0A) *bind_rc = m[p + 2];
+            }
         }
         i += mlen;
     }
     return saw2;
 }
 
-static int bp_probe(const char *host) {
-    WSADATA wsa; WS2_32$WSAStartup(MAKEWORD(2,2), &wsa);
-
-    char port_str[8]; MSVCRT$sprintf(port_str, "389");
+static SOCKET bp_connect(const char *host) {
     struct addrinfo hints, *res = NULL;
     MSVCRT$memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET; hints.ai_socktype = SOCK_STREAM;
-    int gai = WS2_32$getaddrinfo(host, port_str, &hints, &res);
-    if (gai != 0 || !res) {
-        WS2_32$WSACleanup(); return BP_DNS_FAIL;
-    }
+    if (WS2_32$getaddrinfo(host, "389", &hints, &res) != 0 || !res) return INVALID_SOCKET;
 
-    SOCKET sock = WS2_32$socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (WS2_32$connect(sock, res->ai_addr, (int)res->ai_addrlen) != 0) {
-        WS2_32$closesocket(sock); WS2_32$freeaddrinfo(res); WS2_32$WSACleanup(); return BP_CONNECT_FAIL;
+    SOCKET s = WS2_32$socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (s != INVALID_SOCKET && WS2_32$connect(s, res->ai_addr, (int)res->ai_addrlen) != 0) {
+        WS2_32$closesocket(s);
+        s = INVALID_SOCKET;
     }
     WS2_32$freeaddrinfo(res);
-    DWORD tv = 5000; WS2_32$setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+    if (s != INVALID_SOCKET) {
+        DWORD tv = 5000;
+        WS2_32$setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+    }
+    return s;
+}
 
-    int op1l, m1l, op2l, m2l;
-    unsigned char *op1 = bp_bind_req(&op1l);
-    unsigned char *m1  = bp_ldap_msg(1, op1, op1l, &m1l); MSVCRT$free(op1);
-    unsigned char *op2 = bp_whoami_req(&op2l);
-    unsigned char *m2  = bp_ldap_msg(2, op2, op2l, &m2l); MSVCRT$free(op2);
-    int pkt_len = m1l + m2l;
-    unsigned char *pkt = (unsigned char*)MSVCRT$malloc(pkt_len);
-    MSVCRT$memcpy(pkt, m1, m1l); MSVCRT$memcpy(pkt + m1l, m2, m2l);
-    MSVCRT$free(m1); MSVCRT$free(m2);
+// Send data, then read until the bind (want == 1) or whoami (want == 2) is answered,
+//   the server closes, the buffer fills, or a read times out. Returns 1 if whoami was answered.
+static int bp_exchange(SOCKET s, const unsigned char *data, int len, int want, int *bind_rc) {
+    unsigned char buf[2048];  // keep the frame under 4KB, or the compiler emits a __chkstk call BOF loaders can't resolve
+    int got = 0, r, saw2 = 0;
+    *bind_rc = -1;
+    if (WS2_32$send(s, (const char*)data, len, 0) != len) return 0;
+    while (got < (int)sizeof(buf) && (r = WS2_32$recv(s, (char*)buf + got, (int)sizeof(buf) - got, 0)) > 0) {
+        got += r;
+        saw2 = bp_parse(buf, got, bind_rc);
+        if (want == 2 ? saw2 : *bind_rc >= 0) break;
+    }
+    return saw2;
+}
 
-    WS2_32$send(sock, (const char*)pkt, pkt_len, 0);
-    MSVCRT$free(pkt);
+// Bind and whoami are sent stacked in one write: an unpatched DC answers both, a patched DC
+//   drops the whoami. If whoami goes unanswered, a control run sends them one at a time to
+//   confirm the DC does answer whoami normally.
+static int bp_probe(const char *host) {
+    WSADATA wsa;
+    int bind_rc, result = BP_ERROR;
+    if (WS2_32$WSAStartup(MAKEWORD(2,2), &wsa) != 0) return BP_ERROR;
 
-    unsigned char *rbuf = (unsigned char*)MSVCRT$malloc(65536);
-    int recv_len = 0, r;
-    while (recv_len < 65536 && (r = WS2_32$recv(sock, (char*)(rbuf+recv_len), 65536-recv_len, 0)) > 0)
-        recv_len += r;
+    SOCKET s = bp_connect(host);
+    if (s != INVALID_SOCKET) {
+        if (bp_exchange(s, BP_MSGS, sizeof(BP_MSGS), 2, &bind_rc)) result = BP_UNPATCHED;
+        else result = bind_rc < 0 ? BP_NO_BIND : BP_NO_CONTROL;
+        WS2_32$closesocket(s);
+    }
 
-    int bind_rc = -1;
-    int saw2 = bp_parse(rbuf, recv_len, &bind_rc);
-    MSVCRT$free(rbuf);
-    WS2_32$closesocket(sock);
+    if (result == BP_NO_CONTROL && (s = bp_connect(host)) != INVALID_SOCKET) {
+        bp_exchange(s, BP_MSGS, BP_BIND_LEN, 1, &bind_rc);
+        if (bp_exchange(s, BP_MSGS + BP_BIND_LEN, sizeof(BP_MSGS) - BP_BIND_LEN, 2, &bind_rc)) result = BP_PATCHED;
+        WS2_32$closesocket(s);
+    }
+
     WS2_32$WSACleanup();
-
-    if (saw2)      return BP_UNPATCHED;
-    if (bind_rc >= 0) return BP_PATCHED;
-    return BP_INCONCLUSIVE;
+    return result;
 }
 
 // ─── Protection check ────────────────────────────────────────────────────────
 
 void CheckProtection(char* host) {
+    // No need to arm AcquireCredentialsHandleW since we can control the auth mechanism in WLDAP32$ldap_bind_s()
     PVOID vehIscW = NULL; void* addrIscW = NULL;
     if (!HWBP_SetOnApiEx("sspicli.dll", "InitializeSecurityContextW", 1, ISC_VEH, &vehIscW, &addrIscW, FALSE)) {
 		internal_printf("Failed to set HWBP on sspicli!InitializeSecurityContextW (DR1).\n");
@@ -287,7 +244,6 @@ void CheckProtection(char* host) {
     // ── 1. LDAP signing ──────────────────────────────────────────
     g_stripProtFlags = 1;
     ULONG noSigning = trigger_ldap_auth(host, FALSE);
-    BOOL signing_req = (noSigning == LDAP_STRONG_AUTH_REQUIRED);
 
     if (noSigning == LDAP_STRONG_AUTH_REQUIRED) {
         internal_printf("[%s] (LDAP) server ALWAYS REQUIRES signing\n", host);
@@ -297,26 +253,19 @@ void CheckProtection(char* host) {
         internal_printf("[%s] (LDAP) signing requirement unknown - result code:%lu\n", host, noSigning);
     }
 
-    // ── 2. Bypass verdict (only relevant when signing is not confirmed off) ──
-    if (noSigning != LDAP_SUCCESS) {
+    // The signing bypass only matters when signing is enforced
+    if (noSigning == LDAP_STRONG_AUTH_REQUIRED) {
         int bypass = bp_probe(host);
-
         if (bypass == BP_UNPATCHED) {
-            if (signing_req)
-                internal_printf("[%s] (LDAP) Signing Bypass: UNPATCHED   -> relay viable (signing enforced, CVE-2026-70229 unpatched)\n", host);
-            else
-                internal_printf("[%s] (LDAP) Signing Bypass: UNPATCHED   (CVE-2026-70229 unpatched)\n", host);
+            internal_printf("[%s] (LDAP) SIGNING BYPASS UNPATCHED (CVE-2026-70229)\n", host);
         } else if (bypass == BP_PATCHED) {
-            if (signing_req)
-                internal_printf("[%s] (LDAP) Signing Bypass: PATCHED     -> relay blocked (signing required, CVE-2026-70229 patched)\n", host);
-            else
-                internal_printf("[%s] (LDAP) Signing Bypass: PATCHED     (CVE-2026-70229 patched)\n", host);
-        } else if (bypass == BP_DNS_FAIL) {
-            internal_printf("[%s] (LDAP) Signing Bypass: DNS resolution failed\n", host);
-        } else if (bypass == BP_CONNECT_FAIL) {
-            internal_printf("[%s] (LDAP) Signing Bypass: port 389 unreachable\n", host);
+            internal_printf("[%s] (LDAP) signing bypass patched (CVE-2026-70229)\n", host);
+        } else if (bypass == BP_NO_BIND) {
+            internal_printf("[%s] (LDAP) signing bypass inconclusive - no bind response\n", host);
+        } else if (bypass == BP_NO_CONTROL) {
+            internal_printf("[%s] (LDAP) signing bypass inconclusive - whoami unanswered even when not stacked\n", host);
         } else {
-            internal_printf("[%s] (LDAP) Signing Bypass: INCONCLUSIVE — no bind response\n", host);
+            internal_printf("[%s] (LDAP) signing bypass probe failed - could not connect to port 389\n", host);
         }
     }
 
@@ -333,7 +282,8 @@ void CheckProtection(char* host) {
         internal_printf("[%s] (LDAPS) channel binding token requirement unknown - result code:%lu\n", host, zeroCBT);
     }
 
-    HWBP_Clear(1);
+    // Cleanup
+    HWBP_Clear(1);  // DR1 (ISC-W)
     HWBP_RemoveVeh(vehIscW);
     return;
 }

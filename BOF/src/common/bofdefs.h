@@ -13,7 +13,6 @@
 #include <winhttp.h>
 #define SECURITY_WIN32
 #include <sspi.h>
-#include <schannel.h>
 
 
 #ifdef _WIN32
@@ -139,16 +138,6 @@ WINBASEAPI ULONG WINAPI WLDAP32$ldap_get_optionW(LDAP *ld, int option, void *out
 // DNSAPI
 WINBASEAPI DNS_STATUS WINAPI DNSAPI$DnsQuery_A(PCSTR lpstrName, WORD wType, DWORD Options, PVOID pExtra, PDNS_RECORDA* ppQueryResults, PVOID* pReserved);
 WINBASEAPI VOID WINAPI DNSAPI$DnsRecordListFree(PDNS_RECORDA pRecordList, DNS_FREE_TYPE FreeType);
-
-// SECUR32
-WINBASEAPI SECURITY_STATUS WINAPI SECUR32$AcquireCredentialsHandleA(LPSTR pszPrincipal, LPSTR pszPackage, ULONG fCredentialUse, PVOID pvLogonId, PVOID pAuthData, SEC_GET_KEY_FN pGetKeyFn, PVOID pvGetKeyArgument, PCredHandle phCredential, PTimeStamp ptsExpiry);
-WINBASEAPI SECURITY_STATUS WINAPI SECUR32$InitializeSecurityContextA(PCredHandle phCredential, PCtxtHandle phContext, SEC_CHAR *pszTargetName, ULONG fContextReq, ULONG Reserved1, ULONG TargetDataRep, PSecBufferDesc pInput, ULONG Reserved2, PCtxtHandle phNewContext, PSecBufferDesc pOutput, PULONG pfContextAttr, PTimeStamp ptsExpiry);
-WINBASEAPI SECURITY_STATUS WINAPI SECUR32$FreeContextBuffer(PVOID pvContextBuffer);
-WINBASEAPI SECURITY_STATUS WINAPI SECUR32$QueryContextAttributesA(PCtxtHandle phContext, ULONG ulAttribute, PVOID pBuffer);
-WINBASEAPI SECURITY_STATUS WINAPI SECUR32$EncryptMessage(PCtxtHandle phContext, ULONG fQOP, PSecBufferDesc pMessage, ULONG MessageSeqNo);
-WINBASEAPI SECURITY_STATUS WINAPI SECUR32$DecryptMessage(PCtxtHandle phContext, PSecBufferDesc pMessage, ULONG MessageSeqNo, PULONG pfQOP);
-WINBASEAPI SECURITY_STATUS WINAPI SECUR32$DeleteSecurityContext(PCtxtHandle phContext);
-WINBASEAPI SECURITY_STATUS WINAPI SECUR32$FreeCredentialsHandle(PCredHandle phCredential);
 
 // WINHTTP
 WINBASEAPI HINTERNET WINAPI WINHTTP$WinHttpOpen(LPCWSTR pszAgentW, DWORD dwAccessType, LPCWSTR pszProxyW, LPCWSTR pszProxyBypassW, DWORD dwFlags);
@@ -280,16 +269,6 @@ WINBASEAPI BOOL WINAPI WINHTTP$WinHttpCrackUrl(LPCWSTR lpszUrl, DWORD dwUrlLengt
 #define WLDAP32$ldap_init ldap_init
 #define WLDAP32$ldap_bind ldap_bind
 #define WLDAP32$ldap_get_optionW ldap_get_optionW
-
-// SECUR32
-#define SECUR32$AcquireCredentialsHandleA AcquireCredentialsHandleA
-#define SECUR32$InitializeSecurityContextA InitializeSecurityContextA
-#define SECUR32$FreeContextBuffer FreeContextBuffer
-#define SECUR32$QueryContextAttributesA QueryContextAttributesA
-#define SECUR32$EncryptMessage EncryptMessage
-#define SECUR32$DecryptMessage DecryptMessage
-#define SECUR32$DeleteSecurityContext DeleteSecurityContext
-#define SECUR32$FreeCredentialsHandle FreeCredentialsHandle
 
 // WINHTTP
 #define WINHTTP$WinHttpOpen WinHttpOpen
