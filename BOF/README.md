@@ -10,7 +10,7 @@ Load the Cobalt Strike aggressor script from `informer/informer.cna`
 |Commands|Usage|Notes|
 |--------|-----|-----|
 |http-relay-informer | [url]| Inform on HTTP(S) service binding enforcement and HTTPS channel binding enforcement|
-|ldap-relay-informer | [host\|all]| Inform on LDAP signing enforcement and LDAPS channel binding enforcement|
+|ldap-relay-informer | [host\|all]| Inform on LDAP signing enforcement, signing bypass patch status, and LDAPS channel binding enforcement|
 |mssql-relay-informer | [host] [opt: port] [opt: database]| Inform on MSSQL service binding and channel binding enforcement|
 |smb-relay-informer | [host]| Inform on SMB2 signing enforcement|
 
@@ -34,6 +34,9 @@ The `pInput` parameter contains a pointer to a [SecBufferDesc](https://learn.mic
 
 #### LDAP Signing
 We can determine if LDAP signing is required by stripping specific flags from the `fContextReq` parameter. By removing the `ISC_REQ_INTEGRITY`, `ISC_REQ_SEQUENCE_DETECT` and `ISC_REQ_CONFIDENTIALITY` flags, we can elicit a [LDAP_STRONG_AUTH_REQUIRED](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ldap/return-values) error if LDAP signing is required.
+
+#### LDAP Signing Bypass (CVE-2026-70229)
+Checks whether the DC is patched against the [LDAP signing bypass](https://specterops.io/blog/2026/10/23/ldap-signing-bypass-ntlm-relay/). Only checked when LDAP signing is required, and no hooks or credentials are involved. An anonymous bind and a whoami request are sent to port 389 in a single write. An unpatched DC answers both; a patched DC drops the whoami. If the whoami goes unanswered, a control run sends the two requests separately to confirm the DC answers whoami normally.
 
 ## References and Credits
 - [CS-Situational-Awareness-BOF](https://github.com/trustedsec/CS-Situational-Awareness-BOF)
