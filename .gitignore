@@ -1,0 +1,9 @@
+# Claude Code local tooling / worktrees / settings — never pushed
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
