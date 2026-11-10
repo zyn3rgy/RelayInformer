@@ -15,7 +15,7 @@ def main(
         ctx: typer.Context,
         
         target:     str = typer.Option(..., "--target", "-t", help="Target hostname or IP address"),
-        user:       str = typer.Option(..., "--user", "-u", help="Username in format [domain/]username"),
+        user:       str = typer.Option(..., "--user", "-u", help="Username in format domain/username"),
         password:   str = typer.Option(None,"--password", "-p", help="Password for authentication"),
         hashes:     str = typer.Option(None, "--hashes", help="NTLM hashes in format LMHASH:NTHASH"),
         port:       int = typer.Option(1433, "--port", help="Target MSSQL port"),
@@ -27,7 +27,7 @@ def main(
     Examples:
         relayinformer mssql --target server.com --user domain/username --password mypass
         relayinformer mssql --target 192.168.1.10 --user domain/username --hashes LM:NT
-        relayinformer mssql -t server.com -u admin -p mypass --port 1434
+        relayinformer mssql -t server.com -u domain/admin -p mypass --port 1434
     """
     
     

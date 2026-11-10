@@ -13,7 +13,7 @@ class MssqlInformer:
         
         Args:
             target: Target hostname or address
-            user: Username in format [domain/]username
+            user: Username in format domain/username
             port: MSSQL port (default 1433)
             **ntlm_kwargs: Additional NTLM parameters:
                 - channel_binding_value: Channel binding value for NTLM (default b'')
@@ -196,7 +196,7 @@ class MssqlInformer:
         Parse and validate domain/username format
         
         Args:
-            user: Username in format [domain/]username
+            user: Username in format domain/username
             
         Returns:
             Tuple of (domain, username)
