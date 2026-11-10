@@ -66,5 +66,5 @@ Determine the exact level of EPA enforcement for MSSQL services, regardless of e
 uv run relayinformer mssql --target sql.domain.local --user domain/username --password mypass
 
 # Specify custom port
-uv run relayinformer mssql -t sql.domain.local -u admin -p mypass --port 1434
+uv run relayinformer mssql -t sql.domain.local -u domain/admin -p mypass --port 1434
 ```
