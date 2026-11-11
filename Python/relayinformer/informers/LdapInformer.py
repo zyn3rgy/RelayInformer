@@ -258,8 +258,9 @@ class LdapInformer:
         testout = str(dcQuery.response).split("\n")
         for line in testout:
             if "IN A" in line:
-                dcList.add(line.split(" ")[0].rstrip(line.split(" ")[0][-1]))
-        
+                dcname = line.split(" ")[0].removesuffix(".")
+                dcList.add(dcname)
+
         return dcList
 
     #
