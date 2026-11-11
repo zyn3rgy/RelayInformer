@@ -10,6 +10,7 @@ from relayinformer.informers.HttpInformer import HttpInformer
 app = typer.Typer()
 COMMAND_NAME = "http"
 HELP = "Check HTTP/HTTPS servers for EPA settings"
+RUNTIME_PANEL = "Runtime"
 
 
 @app.callback(invoke_without_command=True)
@@ -20,6 +21,7 @@ def main(
         user:       str = typer.Option(..., "--user", help="Username in format [domain/]username or domain\\username"),
         password:   str = typer.Option(None, "--password", "-p", help="Password for authentication"),
         hashes:     str = typer.Option(None, "--hashes", help="NTLM hashes in format LMHASH:NTHASH"),
+        timeout:    int = typer.Option(10, '--timeout', help='The timeout for the HTTP client connection', rich_help_panel=RUNTIME_PANEL),
         
 
 
@@ -69,7 +71,7 @@ def main(
 
     
     try:
-        with HttpInformer(url, user) as informer:
+        with HttpInformer(url, user, timeout) as informer:
 
             # Prompt for password if neither password nor hashes provided
             if password is None and hashes is None:

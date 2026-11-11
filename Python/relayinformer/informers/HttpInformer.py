@@ -177,7 +177,7 @@ class HttpInformer:
     including Channel Binding Token (CBT) manipulation for HTTPS connections.
     """
 
-    def __init__(self, url: str, user: str):
+    def __init__(self, url: str, user: str, timeout: int):
         """
         Initialize HTTP/HTTPS informer
         
@@ -187,6 +187,7 @@ class HttpInformer:
         """
         self.url = url.rstrip('/')
         self.is_https = url.lower().startswith('https://')
+        self.timeout = timeout
         
         # Parse and validate domain/username
         self.domain, self.username = self.parse_domain_user(user)
@@ -250,7 +251,7 @@ class HttpInformer:
             if self.is_https and not verify_setting:
                 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
             
-            response = session.get(self.url, verify=verify_setting)
+            response = session.get(self.url, verify=verify_setting, timeout=self.timeout)
             
             # Capture CBT bytes and target name even on auth failures
             cbt_bytes = auth_handler.captured_cbt_bytes if effective_send_cbt else None
@@ -270,6 +271,9 @@ class HttpInformer:
         except requests.exceptions.SSLError as e:
             logger.debug(f"TLS/SSL error: {e}")
             return "tls_error", None, None
+        except requests.exceptions.Timeout as e:
+            logger.debug(f"Request timed out after {self.timeout}s: {e}")
+            return "timeout", None, None
         except requests.exceptions.RequestException as e:
             logger.debug(f"Request error: {e}")
             return "error", None, None
