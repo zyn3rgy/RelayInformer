@@ -223,7 +223,7 @@ class HttpInformer:
             # Pass the full hash string - pyspnego auto-detects and uses it
             auth_password = hashes
             logger.debug("Using NTLM hash authentication (pass-the-hash)")
-        elif not password and not hashes:
+        elif password is None and not hashes:
             logger.error("Either password or hashes must be provided")
             return "error", None, None
 
