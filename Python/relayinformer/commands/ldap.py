@@ -162,5 +162,7 @@ def main(
                         logger.debug("For troubleshooting:\nldapsChannelBindingAlwaysCheck - " +str(ldapsChannelBindingAlwaysCheck)+"\nldapsChannelBindingWhenSupportedCheck: "+str(ldapsChannelBindingWhenSupportedCheck))
                 else:
                     logger.warning(f"{dc} cannot complete TLS handshake, cert likely not configured")
+            except typer.Exit:
+                raise
             except Exception as e:
                 logger.error(f"[{dc}] {str(e)}")
