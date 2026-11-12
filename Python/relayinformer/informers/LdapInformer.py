@@ -174,23 +174,22 @@ class LdapInformer:
             server_hostname=target,
             do_handshake_on_connect=False
         )
-        ssl_sock.connect((target, 636))
         try:
-            ssl_sock.do_handshake()
-            ssl_sock.close()
-            return True
-        except Exception as e:
-            # Treat cert verification errors as a sign that TLS is enabled
-            if isinstance(e, ssl.SSLCertVerificationError) or "CERTIFICATE_VERIFY_FAILED" in str(e):
-                ssl_sock.close()
+            ssl_sock.connect((target, 636))
+            try:
+                ssl_sock.do_handshake()
                 return True
-            # Timeouts indicate LDAPS is likely not configured
-            if isinstance(e, (TimeoutError, socket.timeout)) or "handshake operation timed out" in str(e):
-                ssl_sock.close()
-                return False
-            else:
-                logger.error("Unexpected error during LDAPS handshake: " + str(e))
-                ssl_sock.close()
+            except Exception as e:
+                # Treat cert verification errors as a sign that TLS is enabled
+                if isinstance(e, ssl.SSLCertVerificationError) or "CERTIFICATE_VERIFY_FAILED" in str(e):
+                    return True
+                # Timeouts indicate LDAPS is likely not configured
+                if isinstance(e, (TimeoutError, socket.timeout)) or "handshake operation timed out" in str(e):
+                    return False
+                else:
+                    raise
+        finally:
+            ssl_sock.close()
 
     #
     # Conduct a bind to LDAPS and determine if channel binding is enforced based 
