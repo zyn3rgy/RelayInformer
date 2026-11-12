@@ -211,10 +211,18 @@ class LdapInformer:
                 elif "data 52e" in str(ldapConn.result):
                     return False #channel binding not enforced
                 else:
-                    logger.error("UNEXPECTED ERROR: " + str(ldapConn.result))
+                    ldapConn_result_str = str(ldapConn.result)
+                    for code, meaning in ERROR_CODES.items():
+                        if code in ldapConn_result_str:
+                            logger.error("Error " + code + " - " + meaning)
+                            raise typer.Exit(1)
+                    logger.error("UNEXPECTED ERROR: " + ldapConn_result_str)
+                    raise typer.Exit(1)
             else:
                 #LDAPS bind successful
                 return False #because channel binding is not enforced
+        except typer.Exit:
+            raise
         except Exception as e:
             logger.error(f"{target} - {str(e)}")
             logger.warning("Ensure DNS is resolving properly, and that you can reach LDAPS on this host")
