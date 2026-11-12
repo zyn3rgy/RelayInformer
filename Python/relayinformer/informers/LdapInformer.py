@@ -18,6 +18,18 @@ LDAP_ANON_BIND = bytes.fromhex("300c020101600702010304008000")
 # messageID 2: ExtendedRequest "Who am I?" (1.3.6.1.4.1.4203.1.11.3)
 LDAP_WHOAMI = bytes.fromhex("301e02010277198017312e332e362e312e342e312e343230332e312e31312e33")
 
+ERROR_CODES = {
+    "data 525": "account does not exist",
+    "data 52e": "wrong user name or password",
+    "data 530": "not allowed to log on at this time",
+    "data 531": "not allowed to log on from this computer",
+    "data 532": "password has expired",
+    "data 533": "account is disabled",
+    "data 701": "account has expired",
+    "data 773": "password must be changed",
+    "data 775": "account is locked out",
+}
+
 
 class LdapInformer:
 
@@ -39,12 +51,13 @@ class LdapInformer:
             ldapConn_result_str = str(ldapConn.result)
             if "stronger" in ldapConn_result_str:
                 return True #because LDAP server signing requirements ARE enforced
-            elif "data 52e" in ldapConn_result_str or "data 532" in ldapConn_result_str:
-                logger.warning(ldapConn_result_str)
-                raise typer.Exit("Invalid credentials - aborting to prevent unnecessary authentication")
-
             else:
+                for code, meaning in ERROR_CODES.items():
+                    if code in ldapConn_result_str:
+                        logger.error("Error " + code + " - " + meaning)
+                        raise typer.Exit(1)
                 logger.error("UNEXPECTED ERROR: " + ldapConn_result_str)
+                raise typer.Exit(1)
         else:
             #LDAPS bind successful
             return False #because LDAP server signing requirements are not enforced
@@ -161,23 +174,22 @@ class LdapInformer:
             server_hostname=target,
             do_handshake_on_connect=False
         )
-        ssl_sock.connect((target, 636))
         try:
-            ssl_sock.do_handshake()
-            ssl_sock.close()
-            return True
-        except Exception as e:
-            # Treat cert verification errors as a sign that TLS is enabled
-            if isinstance(e, ssl.SSLCertVerificationError) or "CERTIFICATE_VERIFY_FAILED" in str(e):
-                ssl_sock.close()
+            ssl_sock.connect((target, 636))
+            try:
+                ssl_sock.do_handshake()
                 return True
-            # Timeouts indicate LDAPS is likely not configured
-            if isinstance(e, (TimeoutError, socket.timeout)) or "handshake operation timed out" in str(e):
-                ssl_sock.close()
-                return False
-            else:
-                logger.error("Unexpected error during LDAPS handshake: " + str(e))
-                ssl_sock.close()
+            except Exception as e:
+                # Treat cert verification errors as a sign that TLS is enabled
+                if isinstance(e, ssl.SSLCertVerificationError) or "CERTIFICATE_VERIFY_FAILED" in str(e):
+                    return True
+                # Timeouts indicate LDAPS is likely not configured
+                if isinstance(e, (TimeoutError, socket.timeout)) or "handshake operation timed out" in str(e):
+                    return False
+                else:
+                    raise
+        finally:
+            ssl_sock.close()
 
     #
     # Conduct a bind to LDAPS and determine if channel binding is enforced based 
@@ -198,10 +210,18 @@ class LdapInformer:
                 elif "data 52e" in str(ldapConn.result):
                     return False #channel binding not enforced
                 else:
-                    logger.error("UNEXPECTED ERROR: " + str(ldapConn.result))
+                    ldapConn_result_str = str(ldapConn.result)
+                    for code, meaning in ERROR_CODES.items():
+                        if code in ldapConn_result_str:
+                            logger.error("Error " + code + " - " + meaning)
+                            raise typer.Exit(1)
+                    logger.error("UNEXPECTED ERROR: " + ldapConn_result_str)
+                    raise typer.Exit(1)
             else:
                 #LDAPS bind successful
                 return False #because channel binding is not enforced
+        except typer.Exit:
+            raise
         except Exception as e:
             logger.error(f"{target} - {str(e)}")
             logger.warning("Ensure DNS is resolving properly, and that you can reach LDAPS on this host")
