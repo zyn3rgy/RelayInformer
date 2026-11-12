@@ -21,20 +21,25 @@ LDAP_WHOAMI = bytes.fromhex("301e02010277198017312e332e362e312e342e312e343230332
 
 class LdapInformer:
 
-    def __init__(self, fqdn, user, password):
+    def __init__(self, fqdn, user, password, nthash):
         self.fqdn = fqdn
         self.user = user
         self.password = password
+        self.nthash = nthash
 
     #
     # Conduct and LDAP bind and determine if server signing requirements
     #   are enforced based on potential errors during the bind attempt 
     #
     def RunLdap(self, target):
+        if self.nthash:
+            secret = f"aad3b435b51404eeaad3b435b51404ee:{self.nthash}"
+        else:
+            secret = self.password
         ldapServer = ldap3.Server(
             target, use_ssl=False, port=389, get_info=ldap3.ALL)
         ldapConn = ldap3.Connection(
-            ldapServer, user=f"{self.fqdn}\\{self.user}", password=self.password, authentication=ldap3.NTLM)
+            ldapServer, user=f"{self.fqdn}\\{self.user}", password=secret, authentication=ldap3.NTLM)
         if not ldapConn.bind():
             ldapConn_result_str = str(ldapConn.result)
             if "stronger" in ldapConn_result_str:
@@ -187,11 +192,15 @@ class LdapInformer:
     #
     def RunLdapsNoEpa(self, target):
         try:
+            if self.nthash:
+                secret = f"aad3b435b51404eeaad3b435b51404ee:{self.nthash}"
+            else:
+                secret = self.password
             tls = ldap3.Tls(validate=ssl.CERT_NONE, version=ssl.PROTOCOL_TLSv1_2)
             ldapServer = ldap3.Server(
                 target, use_ssl=True, port=636, get_info=ldap3.ALL, tls=tls)
             ldapConn = ldap3.Connection(
-                ldapServer, user=f"{self.fqdn}\\{self.user}", password=self.password, authentication=ldap3.NTLM)
+                ldapServer, user=f"{self.fqdn}\\{self.user}", password=secret, authentication=ldap3.NTLM)
             if not ldapConn.bind():
                 if "data 80090346" in str(ldapConn.result):
                     return True #channel binding IS enforced
@@ -216,8 +225,12 @@ class LdapInformer:
     #
     async def RunLdapsWithEpa(self, target, timeout):
         try:
-            password = urllib.parse.quote(self.password)
-            url = f'ldaps+ntlm-password://{self.fqdn}\\{self.user}:{password}@{target}'
+            if self.nthash:
+                nthash = urllib.parse.quote(self.nthash)
+                url = f'ldaps+ntlm-nt://{self.fqdn}\\{self.user}:{nthash}@{target}'
+            else:
+                password = urllib.parse.quote(self.password)
+                url = f'ldaps+ntlm-password://{self.fqdn}\\{self.user}:{password}@{target}'
             conn_url = LDAPConnectionFactory.from_url(url)
             ldaps_client = conn_url.get_client()
             ldaps_client.target.timeout = timeout

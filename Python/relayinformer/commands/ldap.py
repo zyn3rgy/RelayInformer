@@ -74,6 +74,10 @@ def main(
         )
     ):
 
+    if password != DEFAULTPASS and nthash is not None:
+        logger.warning("-nh/--nthash cannot be combined with -p/--password")
+        raise typer.Exit(1)
+
     if target is not None and (dc_ip is not None or dns is not None):
         logger.warning("--target cannot be combined with --dc-ip or --dns")
         raise typer.Exit(1)
@@ -86,12 +90,9 @@ def main(
     #   the (unauthenticated) signing bypass probe on LDAP.
     check_signing = method == Method.BOTH and user != DEFAULTUSER
 
-    if check_signing:
-        if nthash is not None:
-            nthash = f"aad3b435b51404eeaad3b435b51404ee:{nthash}"
-        elif password == DEFAULTPASS:
-            password = getpass.getpass(prompt="Password: ")
-    
+    if user != DEFAULTUSER and nthash is None and password == DEFAULTPASS:
+        password = getpass.getpass(prompt="Password: ")
+
     if target is not None:
         dc_list = _targets_from_target_option(target)
         if fqdn is None:
@@ -111,7 +112,7 @@ def main(
 
     logger.info("Checking DCs for LDAP NTLM relay protections")
 
-    informer = LdapInformer(fqdn, user, password)
+    informer = LdapInformer(fqdn, user, password, nthash)
     if user == DEFAULTUSER:
         logger.debug(f"No credentials supplied - LDAPS channel binding checks will bind as placeholder {DEFAULTUSER}/{DEFAULTPASS} (the resulting error reveals the setting); the LDAP signing bypass probe uses an anonymous bind")
     else:
