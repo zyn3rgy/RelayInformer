@@ -1,5 +1,5 @@
 # RelayInformer - Python
-Python tool that enables an operator to determine EPA enforcement levels from a Linux host. Since NTLM messages are constructed without the Windows SSP, channel binding and target name AV pairs can stripped from NTLM messages, meaning EPA enforcement level (required vs allowed/accepted/when supported) *can* be fully inferred. A cleartext password or NTLM hash for a domain account is required for each module except the LDAPS channel binding and LDAP signing bypass checks of the LDAP module
+Python tool that enables an operator to determine EPA enforcement levels from a Linux host. Since NTLM messages are constructed without the Windows SSP, channel binding and target name AV pairs can stripped from NTLM messages, meaning EPA enforcement level (required vs allowed/accepted/when supported) *can* be fully inferred. A cleartext password or NTLM hash for a domain account is required for each module except the LDAPS channel binding and LDAP signing bypass checks of the LDAP module, and the SMB module
 
 ## Installation
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/)
@@ -68,3 +68,16 @@ uv run relayinformer mssql --target sql.domain.local --user domain/username --pa
 # Specify custom port
 uv run relayinformer mssql -t sql.domain.local -u admin -p mypass --port 1434
 ```
+
+#### SMB
+
+Determine SMB message signing enforcement on the target. This is done **unauthenticated** by parsing the server's SecurityMode from an SMB NEGOTIATE response, so no credentials are required and no session is established.
+
+```bash
+# Check default port 445
+uv run relayinformer smb --target 192.168.1.10
+
+# Specify custom port
+uv run relayinformer smb -t file.domain.local --port 4450
+```
+
