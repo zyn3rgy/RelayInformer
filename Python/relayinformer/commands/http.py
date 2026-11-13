@@ -75,6 +75,11 @@ def main(
             if password is None and hashes is None:
                 password = getpass("Password:")
 
+            def check_status_code(code: str) -> None:
+                if code not in ("200", "401"):
+                    logger.error(f"Step returned {code} instead of 200 or 401. Cannot determine EPA status. Run with -v for details.")
+                    raise typer.Exit(1)
+
             def to_status_code(result: str) -> str:
                 if result == "success":
                     return "200"
@@ -112,6 +117,7 @@ def main(
                         strip_target_name=False,
                 )
                 code = to_status_code(result)
+                check_status_code(code)
                 if code == "200":
                     # Step 3: Fake CBT, correct target name
                     logger.debug("NO CBT allowed (200). Checking with FAKE CBT and correct target name")
@@ -124,6 +130,7 @@ def main(
                             strip_target_name=False,
                     )
                     code = to_status_code(result)
+                    check_status_code(code)
                     if code == "200":
                         logger.info("EPA (channel binding) is DISABLED")
                     else:
@@ -143,6 +150,7 @@ def main(
                     strip_target_name=True,
                 )
                 code = to_status_code(result)
+                check_status_code(code)
                 if code != "200":
                     logger.info("EPA (service binding) is REQUIRED")
                     raise typer.Exit(0)
@@ -159,6 +167,7 @@ def main(
                     strip_target_name=False,
                 )
                 code = to_status_code(result)
+                check_status_code(code)
                 if code == "200":
                     logger.info("EPA (service binding) is DISABLED")
                 else:
@@ -177,6 +186,7 @@ def main(
                         strip_target_name=True,
                 )
                 code = to_status_code(result)
+                check_status_code(code)
                 if code != "200":
                     logger.info("EPA (service binding) is REQUIRED")
                     raise typer.Exit(0)
@@ -191,6 +201,7 @@ def main(
                         strip_target_name=False,
                 )
                 code = to_status_code(result)
+                check_status_code(code)
                 if code == "200":
                     logger.info("EPA (service binding) is DISABLED")
                 else:
