@@ -26,6 +26,9 @@ int TdsPreloginCheckEncryption(const char* host, unsigned short port) {
     SOCKET s = WS2_32$socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (s == INVALID_SOCKET) { WS2_32$WSACleanup(); return -1; }
 
+    DWORD tv = 5000;
+    WS2_32$setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+
     struct sockaddr_in sin; intZeroMemory(&sin, sizeof(sin));
     sin.sin_family = AF_INET;
     sin.sin_port = WS2_32$htons(port);
