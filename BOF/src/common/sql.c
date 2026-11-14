@@ -191,6 +191,7 @@ SQLHDBC ConnectToSqlServer(SQLHENV* env, char* server, int port, char* dbName, S
     if (!SQL_SUCCEEDED(ret))
     {
         *nativeError = ShowError(SQL_HANDLE_DBC, dbc);
+        ODBC32$SQLFreeHandle(SQL_HANDLE_DBC, dbc);
         return NULL;
     }
     
