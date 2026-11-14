@@ -6,20 +6,18 @@ static const wchar_t g_fakeSpnW[] = L"MSSQLSvc/relay.informer";
 
 #include "hwbp.c"
 
-static SQLINTEGER trigger_sql_auth(char* host, int port, char* database) {
+// native error code is our indicator of EPA enforcement
+static BOOL trigger_sql_auth(char* host, int port, char* database, SQLINTEGER* nativeError) {
     SQLHENV env		= NULL;
     SQLHSTMT stmt 	= NULL;
 	SQLHDBC dbc 	= NULL;
 	SQLRETURN ret;
 
-    // native error code is our indicator of EPA enforcement
-    SQLINTEGER nativeError = 0;
-
-	dbc = ConnectToSqlServer(&env, host, port, database, &nativeError);
+	dbc = ConnectToSqlServer(&env, host, port, database, nativeError);
 
     DisconnectSqlServer(env, dbc, stmt);
-       
-    return nativeError;
+
+    return dbc != NULL;
 }
 
 void CheckProtection(char* host, int port, char* database) {
@@ -54,13 +52,14 @@ void CheckProtection(char* host, int port, char* database) {
     // will hold the native error code from ODBC32$SQLGetDiagRec
     // and will be used to determine EPA enforcement
     SQLINTEGER result = 0;
+    BOOL loginsuccess = FALSE;
 
     switch (enc) {
         case 0:
             // SPN override (service binding test)
             internal_printf("[*] Force Encryption is OFF, checking service binding...\n");
             g_spnMode = 1; g_spnModified = 0;
-            result = trigger_sql_auth(host, port, database);
+            loginsuccess = trigger_sql_auth(host, port, database, &result);
             g_spnMode = 0; g_spnModified = 0;
             break;
 
@@ -72,13 +71,19 @@ void CheckProtection(char* host, int port, char* database) {
             // SQL Driver used sends an all 0x00 CBT
             // this will fail if EPA is allowed/required
             internal_printf("[*] ForceEncryption is ON, checking channel binding...\n");
-            result = trigger_sql_auth(host, port, database);
+            loginsuccess = trigger_sql_auth(host, port, database, &result);
             break;
+    }
+
+    // if login succeeds, EPA is off
+    if (loginsuccess == TRUE) {
+        internal_printf("[*] Login successful\n");
+        internal_printf("[*] EPA is OFF\n");
     }
 
     // if result is 18456 (login failed) then EPA is off 
     // and our user does not have access to the database
-    if (result == 18456) {    
+    else if (result == 18456) {    
         internal_printf("[*] EPA is OFF\n");
     }
     // if result is 18452 (login is from an untrusted domain/integrated auth)
@@ -86,10 +91,9 @@ void CheckProtection(char* host, int port, char* database) {
     else if (result == 18452) {
         internal_printf("[*] EPA is ALLOWED or REQUIRED\n");
     }
-    // if result is 0 (login succeeded) then EPA is off
+    // if anything else -> undetermined, print result
     else {
-        internal_printf("[*] EPA is OFF\n");
-        internal_printf("[+] Database login successful, we have access to the database\n");
+        internal_printf("[-] EPA status could not be determined (native error %d)\n", result);
     }
 
     //
